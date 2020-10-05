@@ -5,7 +5,6 @@ import torch
 import torch.nn as nn
 # https://towardsdatascience.com/finetune-a-facial-recognition-classifier-to-recognize-your-face-using-pytorch-d00a639d9a79
 dataset = FaceDatasetFull()
-# dataloader = DataLoader(dataset,batch_size=8,shuffle=True)
 
 train_len = int(len(dataset)*0.8)
 lengths = [train_len, len(dataset) - train_len]
@@ -19,13 +18,10 @@ model = InceptionResnetV1(pretrained=None, classify=True,
 criterion = nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
 
-# im using this as a mapping between unique indices and the identity value.
-# its probably inefficient this way to keep referencing this
-# mapping = dataset.df['id'].value_counts().index
+num_epochs = 100
+print("num epochs to train on:", num_epochs)
 
-print("num epochs to train on: 100")
-
-for epoch in range(0, 100):
+for epoch in range(0, num_epochs):
     print("epoch" + str(epoch))
     running_loss = 0
     training_hits = 0
@@ -34,10 +30,6 @@ for epoch in range(0, 100):
     for index, item in enumerate(train_loader):
         input_batch = item[0] # create a mini-batch as expected by the model
         output_tensor = item[1]
-        # output_indices = []
-        # for identity in output_batch:
-        #     output_indices.append(mapping.get_loc(identity.item()))
-        # output_tensor = torch.tensor(output_batch)
 
         # move the input and model to GPU for speed if available
         if torch.cuda.is_available():
@@ -53,14 +45,7 @@ for epoch in range(0, 100):
         # collect some loss data
         running_loss += loss.item()
 
-        # collect some acc data
-        # if len(y_pred) != 8:
-        #     print(len(y_pred))
-        #     for val in range(0, len(y_pred)):
-        #         print(torch.argmax(y_pred[val]).item())
-        #         print(output_tensor[val])
-
-        for val in range(0, len(y_pred)): # len y_pred should be batch size, i think!
+        for val in range(0, len(y_pred)): # len y_pred should be batch size
             if torch.argmax(y_pred[val]).item() == output_tensor[val]:
                 training_hits += 1
     print("Training loss: " + str(running_loss))
@@ -68,10 +53,6 @@ for epoch in range(0, 100):
     for index, item in enumerate(val_loader):
         input_batch = item[0]  # create a mini-batch as expected by the model
         output_tensor = item[1]
-        # output_indices = []
-        # for identity in output_batch:
-        #     output_indices.append(mapping.get_loc(identity.item()))
-        # output_tensor = torch.tensor(output_batch)
 
         # move the input and model to GPU for speed if available
         if torch.cuda.is_available():

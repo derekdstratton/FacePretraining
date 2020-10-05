@@ -7,9 +7,11 @@ import pandas as pd
 import numpy as np
 from torchvision import transforms
 
+# for use on the mask subset of celeba
 class FaceDataset(Dataset):
     def __init__(self):
         self.imgs_path = "CelebAMask-HQ/CelebA-HQ-img"
+        # i created this file myself that maps index to id for the 30000 in this set
         identities_path = "CelebAMask-HQ/CelebAMask-HQ-identities.txt"
         self.identities = pd.read_csv(identities_path)
         mapping = self.identities['identity'].value_counts().index
@@ -38,6 +40,7 @@ class FaceDataset(Dataset):
 
         return input_tensor, torch.tensor(self.identities['id_mapped'][item])
 
+# for use on the full celeba
 class FaceDatasetFull(Dataset):
     def __init__(self):
         self.imgs_basepath = "CelebA/CelebA"
@@ -60,7 +63,6 @@ class FaceDatasetFull(Dataset):
 
     def __getitem__(self, item):
         img_path = self.df['img_path'][item]
-        # img_name = os.path.join(self.imgs_path, str(item) + ".jpg")
         image = Image.open(img_path)
 
         # image = np.array(image)
