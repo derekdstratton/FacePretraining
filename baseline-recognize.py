@@ -1,3 +1,4 @@
+# facial recognition
 from torch.utils.data import DataLoader, SubsetRandomSampler
 from facenet_pytorch import MTCNN, InceptionResnetV1
 from face_dataset import FaceDataset, FaceDatasetFull
@@ -27,6 +28,7 @@ for epoch in range(0, num_epochs):
     training_hits = 0
     running_loss_val = 0
     val_hits = 0
+    model.train()
     for index, item in enumerate(train_loader):
         input_batch = item[0] # create a mini-batch as expected by the model
         output_tensor = item[1]
@@ -50,22 +52,24 @@ for epoch in range(0, num_epochs):
                 training_hits += 1
     print("Training loss: " + str(running_loss))
     print("Training acc: " + str(training_hits / lengths[0]))
-    for index, item in enumerate(val_loader):
-        input_batch = item[0]  # create a mini-batch as expected by the model
-        output_tensor = item[1]
+    with torch.no_grad():
+        model.eval()
+        for index, item in enumerate(val_loader):
+            input_batch = item[0]  # create a mini-batch as expected by the model
+            output_tensor = item[1]
 
-        # move the input and model to GPU for speed if available
-        if torch.cuda.is_available():
-            input_batch = input_batch.to('cuda')
-            model = model.to('cuda')
-            output_tensor = output_tensor.to('cuda')
-        y_pred = model(input_batch)
-        loss = criterion(y_pred, output_tensor)
-        running_loss_val += loss.item()
-        # collect some acc data
-        for val in range(0, len(y_pred)):
-            if torch.argmax(y_pred[val]).item() == output_tensor[val]:
-                val_hits += 1
+            # move the input and model to GPU for speed if available
+            if torch.cuda.is_available():
+                input_batch = input_batch.to('cuda')
+                model = model.to('cuda')
+                output_tensor = output_tensor.to('cuda')
+            y_pred = model(input_batch)
+            loss = criterion(y_pred, output_tensor)
+            running_loss_val += loss.item()
+            # collect some acc data
+            for val in range(0, len(y_pred)):
+                if torch.argmax(y_pred[val]).item() == output_tensor[val]:
+                    val_hits += 1
     print("Validation loss: " + str(running_loss_val))
     print("Validation acc: " + str(val_hits / lengths[1]))
 
