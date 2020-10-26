@@ -119,6 +119,6 @@ class FaceDatasetFull2(Dataset):
         input_tensor = preprocess(image)
         input_tensor2 = preprocess(image2)
 
-        same = 1 if self.df['id_mapped'][item] == self.df['id_mapped'][item2] else 0
+        same = 1. if self.df['id_mapped'][item] == self.df['id_mapped'][item2] else 0.
 
         return input_tensor, input_tensor2, same

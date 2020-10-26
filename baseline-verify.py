@@ -11,7 +11,8 @@ import numpy as np
 class SiameseNetwork(nn.Module):
     def __init__(self):
         super(SiameseNetwork, self).__init__()
-        self.model = InceptionResnetV1(pretrained=None, classify=True,num_classes = len(dataset.df['id'].value_counts()))
+        self.model = InceptionResnetV1(pretrained=None, classify=True, num_classes=256)
+        # self.model = InceptionResnetV1(pretrained=None, classify=True,num_classes = len(dataset.df['id'].value_counts()))
         # self.cnn1 = nn.Sequential(
         #     nn.ReflectionPad2d(1),
         #     nn.Conv2d(1, 4, kernel_size=3),
@@ -32,15 +33,10 @@ class SiameseNetwork(nn.Module):
         #     nn.Dropout2d(p=.2),
         # )
         #
-        # self.fc1 = nn.Sequential(
-        #     nn.Linear(8 * 100 * 100, 500),
-        #     nn.ReLU(inplace=True),
-        #
-        #     nn.Linear(500, 500),
-        #     nn.ReLU(inplace=True),
-        #
-        #     nn.Linear(500, 5)
-        # )
+        self.fc1 = nn.Sequential(
+            nn.Linear(256, 1),
+            nn.Sigmoid()
+        )
 
     def forward_once(self, x):
         # output = self.cnn1(x)
@@ -51,25 +47,9 @@ class SiameseNetwork(nn.Module):
     def forward(self, input1, input2):
         output1 = self.forward_once(input1)
         output2 = self.forward_once(input2)
-        return output1, output2
 
-class ContrastiveLoss(torch.nn.Module):
-    """
-    Contrastive loss function.
-    Based on: http://yann.lecun.com/exdb/publis/pdf/hadsell-chopra-lecun-06.pdf
-    """
+        return self.fc1(torch.abs(output1 - output2))
 
-    def __init__(self, margin=2.0):
-        super(ContrastiveLoss, self).__init__()
-        self.margin = margin
-
-    def forward(self, output1, output2, label):
-        euclidean_distance = F.pairwise_distance(output1, output2)
-        loss_contrastive = torch.mean((1-label) * torch.pow(euclidean_distance, 2) +
-                                      (label) * torch.pow(torch.clamp(self.margin - euclidean_distance, min=0.0), 2))
-
-
-        return loss_contrastive
 
 class CustomSampler(Sampler):
     r"""Samples elements randomly from a given list of indices, without replacement.
@@ -127,7 +107,7 @@ val_loader = DataLoader(dataset, sampler=test_sampler, batch_size=8)
 siamese = SiameseNetwork()
 # model = torch.hub.load('pytorch/vision:v0.6.0', 'resnet18', pretrained=True)
 # criterion = nn.CrossEntropyLoss()
-criterion = ContrastiveLoss()
+criterion = nn.BCELoss()
 optimizer = torch.optim.Adam(siamese.parameters(), lr=1e-4)
 
 num_epochs = 101
@@ -153,22 +133,22 @@ for epoch in range(0, num_epochs):
             input_batch2 = input_batch2.to('cuda')
             siamese = siamese.to('cuda')
             output_tensor = output_tensor.to('cuda')
-        y_pred, y_pred2 = siamese(input_batch, input_batch2)
+        y_pred = siamese(input_batch, input_batch2)
         optimizer.zero_grad()
-        loss = criterion(y_pred, y_pred2, output_tensor)
-        # print("dissimilarity: " + str(F.pairwise_distance(y_pred, y_pred2)[0].item()) + ", same or not: " +
-        #       str(output_tensor[0]))
+        y_pred = y_pred.reshape(y_pred.shape[0]) # reshape to batch size
+        loss = criterion(y_pred.double(), output_tensor)
         loss.backward()
         optimizer.step()
 
         # collect some loss data
         running_loss += loss.item()
 
-        # for val in range(0, len(y_pred)): # len y_pred should be batch size
-        #     if torch.argmax(y_pred[val]).item() == output_tensor[val]:
-        #         training_hits += 1
+        for val in range(0, len(y_pred)): # len y_pred should be batch size
+            x = 0. if y_pred[val].item() < 0.5 else 1.
+            if x == output_tensor[val]:
+                training_hits += 1
     print("Training loss: " + str(running_loss))
-    # print("Training acc: " + str(training_hits / len(train_sampler)))
+    print("Training acc: " + str(training_hits / len(train_sampler)))
     with torch.no_grad():
         siamese.eval()
         for index, item in enumerate(val_loader):
@@ -182,17 +162,19 @@ for epoch in range(0, num_epochs):
                 input_batch2 = input_batch2.to('cuda')
                 siamese = siamese.to('cuda')
                 output_tensor = output_tensor.to('cuda')
-            y_pred, y_pred2 = siamese(input_batch, input_batch2)
+            y_pred = siamese(input_batch, input_batch2)
+            y_pred = y_pred.reshape(y_pred.shape[0])  # reshape to batch size
             # loss = criterion(y_pred, output_tensor)
-            loss = criterion(y_pred, y_pred2, output_tensor)
+            loss = criterion(y_pred.double(), output_tensor)
             running_loss_val += loss.item()
             # collect some acc data
-            # for val in range(0, len(y_pred)):
-            #     if torch.argmax(y_pred[val]).item() == output_tensor[val]:
-            #         val_hits += 1
+            for val in range(0, len(y_pred)):  # len y_pred should be batch size
+                x = 0. if y_pred[val].item() < 0.5 else 1.
+                if x == output_tensor[val]:
+                    val_hits += 1
     print("Validation loss: " + str(running_loss_val))
     losses.append(running_loss_val)
-    # print("Validation acc: " + str(val_hits / len(test_sampler)))
+    print("Validation acc: " + str(val_hits / len(test_sampler)))
 
 with open('val_losses.txt', 'w') as f:
     for item in losses:
