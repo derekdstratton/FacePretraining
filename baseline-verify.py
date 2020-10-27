@@ -6,12 +6,15 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+from torchvision import models
 
 # https://hackernoon.com/facial-similarity-with-siamese-networks-in-pytorch-9642aa9db2f7
 class SiameseNetwork(nn.Module):
     def __init__(self):
         super(SiameseNetwork, self).__init__()
-        self.model = InceptionResnetV1(pretrained=None, classify=True, num_classes=256)
+        self.model = models.resnet18()
+        self.model.fc = nn.Identity()
+        # self.model = InceptionResnetV1(pretrained=None, classify=True, num_classes=256)
         # self.model = InceptionResnetV1(pretrained=None, classify=True,num_classes = len(dataset.df['id'].value_counts()))
         # self.cnn1 = nn.Sequential(
         #     nn.ReflectionPad2d(1),
@@ -34,7 +37,7 @@ class SiameseNetwork(nn.Module):
         # )
         #
         self.fc1 = nn.Sequential(
-            nn.Linear(256, 1),
+            nn.Linear(512, 1),
             nn.Sigmoid()
         )
 
@@ -60,7 +63,7 @@ class CustomSampler(Sampler):
     """
 
     def __init__(self, first, last):
-        self.groups = dataset.df.groupby('id_mapped').groups
+        self.groups = groups_shuffled
         self.first = first
         self.last = last
         self.cnt = 0
@@ -69,7 +72,7 @@ class CustomSampler(Sampler):
 
     def __iter__(self):
         li = []
-        for i in range(first, last):
+        for i in range(self.first, self.last):
             for j in range(0, len(self.groups[i])):
                 x = self.groups[i][j]
 
@@ -84,6 +87,11 @@ class CustomSampler(Sampler):
 
                 li.append((x, y))
 
+        # the length of li should be equal to cnt
+        # print(len(li))
+        # print(self.cnt)
+        # print("aaaah")
+
         return iter(li)
 
     def __len__(self):
@@ -92,15 +100,22 @@ class CustomSampler(Sampler):
 # https://towardsdatascience.com/finetune-a-facial-recognition-classifier-to-recognize-your-face-using-pytorch-d00a639d9a79
 dataset = FaceDatasetFull2()
 
+# shuffle keys in dict, so the amount of pictures per group is random between train and test
+groups_unshuffled = dataset.df.groupby('id_mapped').groups
+keys = list(groups_unshuffled.keys())
+import random
+random.shuffle(keys)
+groups_shuffled = {keys[i]: groups_unshuffled[i] for i in range(len(keys))}
+# this is questionable, since the groups are sorted by highest amount of samples...
 first = 0
-last = int(len(dataset.df.groupby('id_mapped').groups)*0.8)
+last = int(len(groups_shuffled)*0.8)
 train_sampler = CustomSampler(first, last)
-train_loader = DataLoader(dataset, sampler=train_sampler, batch_size=8)
+train_loader = DataLoader(dataset, sampler=train_sampler, batch_size=32)
 
 first = last
-last = len(dataset.df.groupby('id_mapped').groups)
+last = len(groups_shuffled)
 test_sampler = CustomSampler(first, last)
-val_loader = DataLoader(dataset, sampler=test_sampler, batch_size=8)
+val_loader = DataLoader(dataset, sampler=test_sampler, batch_size=32)
 
 # model = InceptionResnetV1(pretrained=None, classify=True,
 #                              num_classes = len(dataset.df['id'].value_counts()))
@@ -110,7 +125,7 @@ siamese = SiameseNetwork()
 criterion = nn.BCELoss()
 optimizer = torch.optim.Adam(siamese.parameters(), lr=1e-4)
 
-num_epochs = 101
+num_epochs = 30
 print("num epochs to train on:", num_epochs)
 
 losses = []
@@ -121,6 +136,8 @@ for epoch in range(0, num_epochs):
     training_hits = 0
     running_loss_val = 0
     val_hits = 0
+    t_misses = 0
+    v_misses = 0
     siamese.train()
     for index, item in enumerate(train_loader):
         input_batch = item[0] # create a mini-batch as expected by the model
@@ -147,6 +164,8 @@ for epoch in range(0, num_epochs):
             x = 0. if y_pred[val].item() < 0.5 else 1.
             if x == output_tensor[val]:
                 training_hits += 1
+            else:
+                t_misses += 1
     print("Training loss: " + str(running_loss))
     print("Training acc: " + str(training_hits / len(train_sampler)))
     with torch.no_grad():
@@ -172,6 +191,8 @@ for epoch in range(0, num_epochs):
                 x = 0. if y_pred[val].item() < 0.5 else 1.
                 if x == output_tensor[val]:
                     val_hits += 1
+                else:
+                    v_misses += 1
     print("Validation loss: " + str(running_loss_val))
     losses.append(running_loss_val)
     print("Validation acc: " + str(val_hits / len(test_sampler)))
