@@ -93,8 +93,8 @@ siamese = SiameseNetwork()
 criterion = nn.BCELoss()
 optimizer = torch.optim.Adam(siamese.parameters(), lr=1e-4)
 
-num_epochs = 1
-print("num epochs to train on:", num_epochs)
+num_epochs = 50
+print("num epochs to train baseline verify on:", num_epochs)
 
 metrics = {
     'training_loss':[],
@@ -102,51 +102,18 @@ metrics = {
     'val_loss':[],
     'val_acc':[]
 }
-
-for epoch in range(0, num_epochs):
-    print("epoch" + str(epoch))
-    running_loss = 0
-    training_hits = 0
-    running_loss_val = 0
-    val_hits = 0
-    t_misses = 0
-    v_misses = 0
-    siamese.train()
-    for index, item in enumerate(train_loader):
-        input_batch = item[0] # create a mini-batch as expected by the model
-        input_batch2 = item[1]
-        output_tensor = item[2]
-
-        # move the input and model to GPU for speed if available
-        if torch.cuda.is_available():
-            input_batch = input_batch.to('cuda')
-            input_batch2 = input_batch2.to('cuda')
-            siamese = siamese.to('cuda')
-            output_tensor = output_tensor.to('cuda')
-        y_pred = siamese(input_batch, input_batch2)
-        optimizer.zero_grad()
-        y_pred = y_pred.reshape(y_pred.shape[0]) # reshape to batch size
-        loss = criterion(y_pred.double(), output_tensor)
-        loss.backward()
-        optimizer.step()
-
-        # collect some loss data
-        running_loss += loss.item()
-
-        for val in range(0, len(y_pred)): # len y_pred should be batch size
-            x = 0. if y_pred[val].item() < 0.5 else 1.
-            if x == output_tensor[val]:
-                training_hits += 1
-            else:
-                t_misses += 1
-    print("Training loss: " + str(running_loss))
-    print("Training acc: " + str(training_hits / len(train_sampler)))
-    metrics['training_acc'].append(training_hits / len(train_sampler))
-    metrics['training_loss'].append(running_loss)
-    with torch.no_grad():
-        siamese.eval()
-        for index, item in enumerate(val_loader):
-            input_batch = item[0]  # create a mini-batch as expected by the model
+try:
+    for epoch in range(0, num_epochs):
+        print("epoch" + str(epoch))
+        running_loss = 0
+        training_hits = 0
+        running_loss_val = 0
+        val_hits = 0
+        t_misses = 0
+        v_misses = 0
+        siamese.train()
+        for index, item in enumerate(train_loader):
+            input_batch = item[0] # create a mini-batch as expected by the model
             input_batch2 = item[1]
             output_tensor = item[2]
 
@@ -157,20 +124,58 @@ for epoch in range(0, num_epochs):
                 siamese = siamese.to('cuda')
                 output_tensor = output_tensor.to('cuda')
             y_pred = siamese(input_batch, input_batch2)
-            y_pred = y_pred.reshape(y_pred.shape[0])  # reshape to batch size
+            optimizer.zero_grad()
+            y_pred = y_pred.reshape(y_pred.shape[0]) # reshape to batch size
             loss = criterion(y_pred.double(), output_tensor)
-            running_loss_val += loss.item()
-            # collect some acc data
-            for val in range(0, len(y_pred)):  # len y_pred should be batch size
+            loss.backward()
+            optimizer.step()
+
+            # collect some loss data
+            running_loss += loss.item()
+
+            for val in range(0, len(y_pred)): # len y_pred should be batch size
                 x = 0. if y_pred[val].item() < 0.5 else 1.
                 if x == output_tensor[val]:
-                    val_hits += 1
+                    training_hits += 1
                 else:
-                    v_misses += 1
-    print("Validation loss: " + str(running_loss_val))
-    metrics['val_acc'].append(val_hits / len(test_sampler))
-    metrics['val_loss'].append(running_loss_val)
-    print("Validation acc: " + str(val_hits / len(test_sampler)))
+                    t_misses += 1
+        print("Training loss: " + str(running_loss))
+        print("Training acc: " + str(training_hits / len(train_sampler)))
+        metrics['training_acc'].append(training_hits / len(train_sampler))
+        metrics['training_loss'].append(running_loss)
+        with torch.no_grad():
+            siamese.eval()
+            for index, item in enumerate(val_loader):
+                input_batch = item[0]  # create a mini-batch as expected by the model
+                input_batch2 = item[1]
+                output_tensor = item[2]
+
+                # move the input and model to GPU for speed if available
+                if torch.cuda.is_available():
+                    input_batch = input_batch.to('cuda')
+                    input_batch2 = input_batch2.to('cuda')
+                    siamese = siamese.to('cuda')
+                    output_tensor = output_tensor.to('cuda')
+                y_pred = siamese(input_batch, input_batch2)
+                y_pred = y_pred.reshape(y_pred.shape[0])  # reshape to batch size
+                loss = criterion(y_pred.double(), output_tensor)
+                running_loss_val += loss.item()
+                # collect some acc data
+                for val in range(0, len(y_pred)):  # len y_pred should be batch size
+                    x = 0. if y_pred[val].item() < 0.5 else 1.
+                    if x == output_tensor[val]:
+                        val_hits += 1
+                    else:
+                        v_misses += 1
+        print("Validation loss: " + str(running_loss_val))
+        metrics['val_acc'].append(val_hits / len(test_sampler))
+        metrics['val_loss'].append(running_loss_val)
+        print("Validation acc: " + str(val_hits / len(test_sampler)))
+except KeyboardInterrupt:
+    print("interrupted: still printing metrics to file.")
+    now = str(datetime.date(datetime.now()))
+    with open('metrics-' + now + '.txt', 'w') as f:
+        json.dump(metrics, f)
 
 now = str(datetime.date(datetime.now()))
 with open('metrics-' + now + '.txt', 'w') as f:
