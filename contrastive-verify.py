@@ -17,7 +17,8 @@ from datetime import datetime
 class SiameseNetwork(nn.Module):
     def __init__(self):
         super(SiameseNetwork, self).__init__()
-        self.model = models.resnet18()
+        self.model = contrastive_train.EncodingNet()
+        self.model.load_state_dict(torch.load('contrastive-model/model'))
         self.model.fc = nn.Identity()
         self.fc1 = nn.Sequential(
             nn.Linear(512, 1),
