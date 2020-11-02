@@ -2,7 +2,7 @@
 import json
 
 from torch.utils.data import DataLoader, SubsetRandomSampler, Sampler
-from facenet_pytorch import MTCNN, InceptionResnetV1
+#from facenet_pytorch import MTCNN, InceptionResnetV1
 from face_dataset import FaceDataset, FaceDatasetFull, FaceDatasetFull2
 import torch
 import torch.nn as nn
@@ -12,6 +12,7 @@ from torchvision import models
 from face_representations import contrastive_train
 import random
 from datetime import datetime
+import time
 
 # https://hackernoon.com/facial-similarity-with-siamese-networks-in-pytorch-9642aa9db2f7
 class SiameseNetwork(nn.Module):
@@ -57,10 +58,14 @@ class CustomSampler(Sampler):
                 x = self.groups[i][j]
 
                 # 50%
-                if np.random.randint(2) == 0:
-                    y = np.random.choice(self.groups[np.random.choice(np.arange(first, last))])
+                if torch.rand(1).item() > .5:
+                    group_choice = torch.randint(first, last, (1,)).item()
+                    group_ims = self.groups[group_choice]
+                    im_choice = torch.randint(len(group_ims),(1,)).item()
+                    y = self.groups[group_choice][im_choice]
                 else:
-                    y = np.random.choice(self.groups[i])
+                    im_choice = torch.randint(len(self.groups[i]),(1,)).item()
+                    y = self.groups[i][im_choice]
                 # this isnt guaranteed diff, but probably. i can make it guarantedd by taking it out of arange
 
                 li.append((x, y))
@@ -79,19 +84,22 @@ keys = list(groups_unshuffled.keys())
 random.shuffle(keys)
 groups_shuffled = {keys[i]: groups_unshuffled[i] for i in range(len(keys))}
 # this is questionable, since the groups are sorted by highest amount of samples...
+batch_size = 128
 first = 0
 last = int(len(groups_shuffled)*0.8)
 train_sampler = CustomSampler(first, last)
-train_loader = DataLoader(dataset, sampler=train_sampler, batch_size=32)
+train_loader = DataLoader(dataset, sampler=train_sampler,
+                          num_workers=8, batch_size=batch_size)
 
 first = last
 last = len(groups_shuffled)
 test_sampler = CustomSampler(first, last)
-val_loader = DataLoader(dataset, sampler=test_sampler, batch_size=32)
+val_loader = DataLoader(dataset, sampler=test_sampler,
+                        num_workers=8, batch_size=batch_size)
 
 siamese = SiameseNetwork()
 criterion = nn.BCELoss()
-optimizer = torch.optim.Adam(siamese.parameters(), lr=1e-4)
+optimizer = torch.optim.Adam(siamese.parameters())
 
 num_epochs = 50
 print("num epochs to train baseline verify on:", num_epochs)
@@ -103,6 +111,7 @@ metrics = {
     'val_acc':[]
 }
 try:
+    start_time = time.time()
     for epoch in range(0, num_epochs):
         print("epoch" + str(epoch))
         running_loss = 0
@@ -139,10 +148,17 @@ try:
                     training_hits += 1
                 else:
                     t_misses += 1
-        print("Training loss: " + str(running_loss))
+
+            if index % 250 == 249:
+                print(f"{index/len(train_loader)*100:5.2f}% / "
+                      f"{time.time() - start_time:5.0f}s | "
+                      f"loss: {running_loss/(index + 1):.4f} / "
+                      f"acc: {training_hits/(index + 1)*100/batch_size:.2f}")
+
+        print("Training loss: " + str(running_loss / len(train_loader)))
         print("Training acc: " + str(training_hits / len(train_sampler)))
         metrics['training_acc'].append(training_hits / len(train_sampler))
-        metrics['training_loss'].append(running_loss)
+        metrics['training_loss'].append(running_loss / len(train_loader))
         with torch.no_grad():
             siamese.eval()
             for index, item in enumerate(val_loader):
@@ -167,9 +183,9 @@ try:
                         val_hits += 1
                     else:
                         v_misses += 1
-        print("Validation loss: " + str(running_loss_val))
+        print("Validation loss: " + str(running_loss_val / len(val_loader)))
         metrics['val_acc'].append(val_hits / len(test_sampler))
-        metrics['val_loss'].append(running_loss_val)
+        metrics['val_loss'].append(running_loss_val / len(val_loader))
         print("Validation acc: " + str(val_hits / len(test_sampler)))
 except KeyboardInterrupt:
     print("interrupted: still printing metrics to file.")

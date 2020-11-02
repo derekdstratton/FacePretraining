@@ -83,7 +83,7 @@ class FaceDatasetFull(Dataset):
 class FaceDatasetFull2(Dataset):
     def __init__(self):
         self.imgs_basepath = "CelebA/CelebA"
-        full_paths = glob.glob("CelebA/CelebA/*/*.jpg")
+        full_paths = glob.glob(self.imgs_basepath + "/*/*.jpg")
         self.df = pd.DataFrame(full_paths, columns=['img_path'])
         self.df['id'] = 0
         self.df['id_mapped'] = 0
