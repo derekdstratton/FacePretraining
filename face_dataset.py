@@ -81,7 +81,9 @@ class FaceDatasetFull(Dataset):
         return input_tensor, torch.tensor(self.df['id_mapped'][item])
 
 class FaceDatasetFull2(Dataset):
-    def __init__(self):
+    def __init__(self, augmentations=False):
+        self.augmentations = augmentations
+
         self.imgs_basepath = "CelebA/CelebA"
         full_paths = glob.glob(self.imgs_basepath + "/*/*.jpg")
         self.df = pd.DataFrame(full_paths, columns=['img_path'])
@@ -110,12 +112,24 @@ class FaceDatasetFull2(Dataset):
         # image = np.array(image)
         # input_tensor = torch.tensor(image)
 
-        preprocess = transforms.Compose([
-            transforms.Resize(256),
-            transforms.CenterCrop(224),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        ])
+        if not self.augmentations:
+            preprocess = transforms.Compose([
+                transforms.Resize(256),
+                transforms.CenterCrop(224),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                     std=[0.229, 0.224, 0.225]),
+            ])
+        if self.augmentations:
+            preprocess = transforms.Compose([
+                transforms.Resize(256),
+                transforms.RandomCrop(224),
+                transforms.RandomHorizontalFlip(),
+                transforms.RandomRotation(10),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                     std=[0.229, 0.224, 0.225]),
+            ])
         input_tensor = preprocess(image)
         input_tensor2 = preprocess(image2)
 

@@ -59,14 +59,17 @@ class CustomSampler(Sampler):
 
                 # 50%
                 if torch.rand(1).item() > .5:
-                    group_choice = torch.randint(first, last, (1,)).item()
+                    group_choice = torch.randint(first, last - 1, (1,)).item()
+                    if group_choice >= i:
+                        group_choice += 1
                     group_ims = self.groups[group_choice]
                     im_choice = torch.randint(len(group_ims),(1,)).item()
                     y = self.groups[group_choice][im_choice]
                 else:
-                    im_choice = torch.randint(len(self.groups[i]),(1,)).item()
+                    im_choice=torch.randint(len(self.groups[i])-1,(1,)).item()
+                    if im_choice >= j:
+                        im_choice += 1
                     y = self.groups[i][im_choice]
-                # this isnt guaranteed diff, but probably. i can make it guarantedd by taking it out of arange
 
                 li.append((x, y))
 
@@ -76,7 +79,8 @@ class CustomSampler(Sampler):
         return self.cnt
 
 # https://towardsdatascience.com/finetune-a-facial-recognition-classifier-to-recognize-your-face-using-pytorch-d00a639d9a79
-dataset = FaceDatasetFull2()
+dataset = FaceDatasetFull2(augmentations=True)
+dataset_val = FaceDatasetFull2(augmentations=False)
 
 # shuffle keys in dict, so the amount of pictures per group is random between train and test
 groups_unshuffled = dataset.df.groupby('id_mapped').groups
@@ -94,7 +98,7 @@ train_loader = DataLoader(dataset, sampler=train_sampler,
 first = last
 last = len(groups_shuffled)
 test_sampler = CustomSampler(first, last)
-val_loader = DataLoader(dataset, sampler=test_sampler,
+val_loader = DataLoader(dataset_val, sampler=test_sampler,
                         num_workers=8, batch_size=batch_size)
 
 siamese = SiameseNetwork()
