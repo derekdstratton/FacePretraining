@@ -59,7 +59,7 @@ class CustomSampler(Sampler):
 
                 # 50%
                 if torch.rand(1).item() > .5:
-                    group_choice = torch.randint(first, last - 1, (1,)).item()
+                    group_choice = torch.randint(self.first, self.last - 1, (1,)).item()
                     if group_choice >= i:
                         group_choice += 1
                     group_ims = self.groups[group_choice]
