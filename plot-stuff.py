@@ -2,7 +2,7 @@ import json
 import numpy as np
 import matplotlib.pyplot as plt
 
-fname = "metrics-baseline.txt"
+fname = "metrics-contrastive.txt"
 
 with open(fname) as f:
     x=json.load(f)

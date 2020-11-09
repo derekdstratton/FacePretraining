@@ -80,16 +80,22 @@ class FaceDatasetFull(Dataset):
 
         return input_tensor, torch.tensor(self.df['id_mapped'][item])
 
+def contains_more_than_1(dir_path):
+    return len(os.listdir(dir_path)) >= 2
+
 class FaceDatasetFull2(Dataset):
     def __init__(self, augmentations=False):
         self.augmentations = augmentations
 
         self.imgs_basepath = "CelebA/CelebA"
         full_paths = glob.glob(self.imgs_basepath + "/*/*.jpg")
-        self.df = pd.DataFrame(full_paths, columns=['img_path'])
+        # this is SO SLOW. do better pls.
+        paths_with_2_faces = [x for x in full_paths if contains_more_than_1(os.path.dirname(x))]
+        print('finished finding paths with 2+ faces')
+        self.df = pd.DataFrame(paths_with_2_faces, columns=['img_path'])
         self.df['id'] = 0
         self.df['id_mapped'] = 0
-        for index, x in enumerate(full_paths):
+        for index, x in enumerate(paths_with_2_faces):
             id = os.path.dirname(x).split("/")[-1].split("-")[-1]
             # img_id = int(os.path.split(x)[-1].split('.')[0])
             self.df['id'][index] = id

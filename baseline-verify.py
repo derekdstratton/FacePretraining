@@ -14,11 +14,19 @@ import random
 from datetime import datetime
 import time
 
+MODEL = "contrastive"
+
 # https://hackernoon.com/facial-similarity-with-siamese-networks-in-pytorch-9642aa9db2f7
 class SiameseNetwork(nn.Module):
     def __init__(self):
         super(SiameseNetwork, self).__init__()
-        self.model = models.resnet18()
+        if MODEL == "baseline":
+            self.model = models.resnet18()
+        elif MODEL == "contrastive":
+            self.model = contrastive_train.EncodingNet()
+            self.model.load_state_dict(torch.load('contrastive-model/model'))
+        else:
+            raise Exception("illegal MODEL string")
         self.model.fc = nn.Identity()
         self.fc1 = nn.Sequential(
             nn.Linear(512, 1),
@@ -43,25 +51,26 @@ class CustomSampler(Sampler):
         generator (Generator): Generator used in sampling.
     """
 
-    def __init__(self, first, last):
-        self.groups = groups_shuffled
-        self.first = first
-        self.last = last
+    def __init__(self, groups):
+        self.groups = groups
+        # self.first = first
+        # self.last = last
         self.cnt = 0
-        for i in range(first, last):
+        for i in self.groups:
             self.cnt += len(self.groups[i])
 
     def __iter__(self):
         li = []
-        for i in range(self.first, self.last):
+        for i in self.groups:
             for j in range(0, len(self.groups[i])):
                 x = self.groups[i][j]
 
                 # 50%
                 if torch.rand(1).item() > .5:
-                    group_choice = torch.randint(self.first, self.last - 1, (1,)).item()
-                    if group_choice >= i:
-                        group_choice += 1
+                    group_choice = i
+                    while group_choice == i:
+                        group_choice = torch.randint(0, len(self.groups) - 1, (1,)).item()
+                        group_choice = list(self.groups.keys())[group_choice] # convert from index to id
                     group_ims = self.groups[group_choice]
                     im_choice = torch.randint(len(group_ims),(1,)).item()
                     y = self.groups[group_choice][im_choice]
@@ -76,6 +85,7 @@ class CustomSampler(Sampler):
         return iter(li)
 
     def __len__(self):
+        # return len(self.groups)
         return self.cnt
 
 # https://towardsdatascience.com/finetune-a-facial-recognition-classifier-to-recognize-your-face-using-pytorch-d00a639d9a79
@@ -83,21 +93,30 @@ dataset = FaceDatasetFull2(augmentations=True)
 dataset_val = FaceDatasetFull2(augmentations=False)
 
 # shuffle keys in dict, so the amount of pictures per group is random between train and test
-groups_unshuffled = dataset.df.groupby('id_mapped').groups
-keys = list(groups_unshuffled.keys())
-random.shuffle(keys)
-groups_shuffled = {keys[i]: groups_unshuffled[i] for i in range(len(keys))}
+all_groups = dataset.df.groupby('id').groups
+with open('train_ids.txt') as f:
+    train_ids = f.read().splitlines()
+    train_ids = [int(x.split('-')[-1]) for x in train_ids]
+    train_groups = {k: all_groups[k] for k in train_ids if k in all_groups.keys()}
+with open('val_ids.txt') as f:
+    val_ids = f.read().splitlines()
+    val_ids = [int(x.split('-')[-1]) for x in val_ids]
+    val_groups = {k: all_groups[k] for k in val_ids if k in all_groups.keys()}
+### TODO: make the train and test groups here, then pass that into the sampler instead of first and last.
+# keys = list(groups_unshuffled.keys())
+# random.shuffle(keys)
+# groups_shuffled = {keys[i]: groups_unshuffled[i] for i in range(len(keys))}
 # this is questionable, since the groups are sorted by highest amount of samples...
 batch_size = 128
-first = 0
-last = int(len(groups_shuffled)*0.8)
-train_sampler = CustomSampler(first, last)
+# first = 0
+# last = int(len(groups_shuffled)*0.8)
+train_sampler = CustomSampler(train_groups)
 train_loader = DataLoader(dataset, sampler=train_sampler,
                           num_workers=8, batch_size=batch_size)
 
-first = last
-last = len(groups_shuffled)
-test_sampler = CustomSampler(first, last)
+# first = last
+# last = len(groups_shuffled)
+test_sampler = CustomSampler(val_groups)
 val_loader = DataLoader(dataset_val, sampler=test_sampler,
                         num_workers=8, batch_size=batch_size)
 
@@ -106,7 +125,7 @@ criterion = nn.BCELoss()
 optimizer = torch.optim.Adam(siamese.parameters())
 
 num_epochs = 50
-print("num epochs to train baseline verify on:", num_epochs)
+print("num epochs to train " + MODEL + " on:" + str(num_epochs))
 
 metrics = {
     'training_loss':[],
